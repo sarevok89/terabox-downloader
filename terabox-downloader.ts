@@ -19,7 +19,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 
-const CONFIG_PATH = path.join(os.homedir(), 'Programming', 'terabox_downloader', 'terabox_config.ts');
+const CONFIG_PATH = path.join(path.dirname(new URL(import.meta.url).pathname), 'terabox_config.ts');
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' + '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const ERRNO: Record<number, string> = {
