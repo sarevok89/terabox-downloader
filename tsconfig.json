@@ -5,7 +5,9 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "esModuleInterop": true,
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
-  "include": ["terabox-downloader.ts"]
+  "include": ["terabox-downloader.ts", "src/**/*.ts"]
 }
