@@ -1,0 +1,4 @@
+node_modules/
+terabox_config.ts
+dist/
+*.js.map
