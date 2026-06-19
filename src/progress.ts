@@ -74,9 +74,11 @@ export class ProgressDisplay {
   private lastRenderTime = Date.now();
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(totalFiles: number, totalBytes: number) {
+  constructor(totalFiles: number, totalBytes: number, alreadyDownloaded = 0) {
     this.totalFiles = totalFiles;
     this.totalBytes = totalBytes;
+    this.downloadedBytes = alreadyDownloaded;
+    this.lastRenderTotal = alreadyDownloaded;
   }
 
   /** Claims a free display row for a new in-progress file; caller must call finish() to release it. */
@@ -148,7 +150,7 @@ export class ProgressDisplay {
 
     for (const s of this.slots) {
       if (!s) { lines.push(''); continue; }
-      const name = truncate(s.name, 28).padEnd(28);
+      const name = truncate(s.name, 72).padEnd(72);
       const frac = s.size > 0 ? s.downloaded / s.size : 0;
       const bar = makeBar(frac, 18);
       const pctStr = `${Math.round(frac * 100)}%`.padStart(4);

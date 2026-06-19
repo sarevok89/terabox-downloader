@@ -24,6 +24,10 @@ export async function collectFiles(
   return files;
 }
 
+function localPathFor(localRoot: string, file: TeraBoxItem): string {
+  return path.join(localRoot, file.path.replace(/^\//, ''));
+}
+
 /**
  * Downloads dlink to dest, streaming through a `.part` temp file and atomically
  * renaming on completion. Skips the file if dest already exists.
@@ -71,15 +75,19 @@ export async function downloadAll(
   localRoot: string,
 ): Promise<ProgressDisplay> {
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  const alreadyDownloaded = files.reduce(
+    (sum, f) => (fs.existsSync(localPathFor(localRoot, f)) ? sum + f.size : sum),
+    0,
+  );
   const sem = new Semaphore(CONCURRENCY);
-  const display = new ProgressDisplay(files.length, totalBytes);
+  const display = new ProgressDisplay(files.length, totalBytes, alreadyDownloaded);
 
   display.start();
 
   await Promise.all(
     files.map(async (file) => {
       await sem.acquire();
-      const local = path.join(localRoot, file.path.replace(/^\//, ''));
+      const local = localPathFor(localRoot, file);
       const slot = display.allocSlot(file.server_filename, file.size);
       try {
         const dlink = await getDlink(headers, file.path);
