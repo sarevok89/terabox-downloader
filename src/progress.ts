@@ -57,13 +57,14 @@ interface SlotState {
   speed: number;
 }
 
-const BLOCK_LINES = CONCURRENCY + 2;
+const BLOCK_LINES = CONCURRENCY + 3;
 
 export class ProgressDisplay {
   private slots: Array<SlotState | null> = new Array(CONCURRENCY).fill(null);
   private pool: number[] = Array.from({ length: CONCURRENCY }, (_, i) => i);
   private totalFiles: number;
   private totalBytes: number;
+  private currentDir: string;
   doneCount = 0;
   skippedCount = 0;
   failedCount = 0;
@@ -74,17 +75,19 @@ export class ProgressDisplay {
   private lastRenderTime = Date.now();
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(totalFiles: number, totalBytes: number, alreadyDownloaded = 0) {
+  constructor(totalFiles: number, totalBytes: number, localRoot: string, alreadyDownloaded = 0) {
     this.totalFiles = totalFiles;
     this.totalBytes = totalBytes;
+    this.currentDir = localRoot;
     this.downloadedBytes = alreadyDownloaded;
     this.lastRenderTotal = alreadyDownloaded;
   }
 
   /** Claims a free display row for a new in-progress file; caller must call finish() to release it. */
-  allocSlot(name: string, size: number): number {
+  allocSlot(name: string, size: number, dir: string): number {
     const i = this.pool.shift()!;
     this.slots[i] = { name, size, downloaded: 0, prevDownloaded: 0, speed: 0 };
+    this.currentDir = dir;
     return i;
   }
 
@@ -141,7 +144,9 @@ export class ProgressDisplay {
     const eta = this.overallSpeed > 10 ? remaining / this.overallSpeed : Infinity;
     const pct = this.totalBytes > 0 ? Math.round((totalNow / this.totalBytes) * 100) : 0;
 
+    const dirMax = Math.max(20, (process.stdout.columns || 120) - 'Saving to: '.length - 1);
     const lines: string[] = [
+      `Saving to: ${truncate(this.currentDir, dirMax)}`,
       `[${finishedCount}/${this.totalFiles} files]  ` +
         `${formatBytes(totalNow)} / ${formatBytes(this.totalBytes)}  ` +
         `${formatBytes(this.overallSpeed)}/s  ETA ${formatEta(eta)}  (${pct}%)`,

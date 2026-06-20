@@ -30,7 +30,9 @@ function localPathFor(localRoot: string, file: TeraBoxItem): string {
 
 /**
  * Downloads dlink to dest, streaming through a `.part` temp file and atomically
- * renaming on completion. Skips the file if dest already exists.
+ * renaming on completion. Skips the file if dest already exists. If a `.part`
+ * file is left over from an interrupted run, resumes it via a Range request;
+ * falls back to a full restart if the server doesn't honor the range.
  */
 export async function downloadFile(
   headers: Record<string, string>,
@@ -42,11 +44,25 @@ export async function downloadFile(
 
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const tmp = `${dest}.part`;
-  const res = await fetch(dlink, { headers, redirect: 'follow' });
+  let resumeFrom = fs.existsSync(tmp) ? fs.statSync(tmp).size : 0;
+
+  let res = await fetch(dlink, {
+    headers: resumeFrom > 0 ? { ...headers, Range: `bytes=${resumeFrom}-` } : headers,
+    redirect: 'follow',
+  });
+
+  if (resumeFrom > 0 && res.status !== 206) {
+    await res.body?.cancel();
+    resumeFrom = 0;
+    res = await fetch(dlink, { headers, redirect: 'follow' });
+  }
+
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-  const fileStream = fs.createWriteStream(tmp);
-  let downloaded = 0;
+  const fileStream = fs.createWriteStream(tmp, resumeFrom > 0 ? { flags: 'a' } : undefined);
+  fileStream.on('error', () => {});
+  let downloaded = resumeFrom;
+  onProgress(downloaded);
 
   try {
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -56,7 +72,6 @@ export async function downloadFile(
     }
   } catch (err) {
     fileStream.destroy();
-    fs.rmSync(tmp, { force: true });
     throw err;
   }
 
@@ -80,7 +95,7 @@ export async function downloadAll(
     0,
   );
   const sem = new Semaphore(CONCURRENCY);
-  const display = new ProgressDisplay(files.length, totalBytes, alreadyDownloaded);
+  const display = new ProgressDisplay(files.length, totalBytes, localRoot, alreadyDownloaded);
 
   display.start();
 
@@ -88,7 +103,7 @@ export async function downloadAll(
     files.map(async (file) => {
       await sem.acquire();
       const local = localPathFor(localRoot, file);
-      const slot = display.allocSlot(file.server_filename, file.size);
+      const slot = display.allocSlot(file.server_filename, file.size, path.dirname(local));
       try {
         const dlink = await getDlink(headers, file.path);
         const result = await downloadFile(headers, dlink, local, (n) => display.update(slot, n));

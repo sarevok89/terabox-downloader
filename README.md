@@ -39,7 +39,7 @@ npx tsx terabox-downloader.ts "/My Files/Photos" "/home/user/backup"
 
 The remote path is the folder path as it appears in the TeraBox web UI (starting with `/`).
 
-Already-downloaded files are skipped automatically.
+Already-downloaded files are skipped automatically. If a download is interrupted partway through, re-running resumes each unfinished file from where it left off (via an HTTP Range request) instead of starting over — falling back to a full restart only if the server doesn't honor the range for that link.
 
 ## Troubleshooting
 

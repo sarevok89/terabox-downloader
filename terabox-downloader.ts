@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   }
 
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
-  console.log(` ${files.length} files (${formatBytes(totalBytes)})\nSaving to: ${local}`);
+  console.log(` ${files.length} files (${formatBytes(totalBytes)})`);
 
   const display = await downloadAll(files, headers, local);
   const elapsed = (Date.now() - display.startTime) / 1000;
