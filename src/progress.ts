@@ -11,9 +11,12 @@ export function formatBytes(bytes: number): string {
 
 export function formatEta(secs: number): string {
   if (!isFinite(secs) || secs < 0) return '--:--';
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  const total = Math.floor(secs);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = s.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
 function makeBar(fraction: number, width: number): string {
@@ -58,6 +61,7 @@ interface SlotState {
 }
 
 const BLOCK_LINES = CONCURRENCY + 3;
+const SPEED_SMOOTHING_TAU = 5; // seconds — higher = less jumpy ETA, slower to react to real speed changes
 
 export class ProgressDisplay {
   private slots: Array<SlotState | null> = new Array(CONCURRENCY).fill(null);
@@ -135,7 +139,8 @@ export class ProgressDisplay {
 
     const totalNow = this.downloadedBytes + this.activeBytes;
     const instant = (totalNow - this.lastRenderTotal) / dt;
-    this.overallSpeed = this.overallSpeed * 0.7 + instant * 0.3;
+    const speedAlpha = 1 - Math.exp(-dt / SPEED_SMOOTHING_TAU);
+    this.overallSpeed += (instant - this.overallSpeed) * speedAlpha;
     this.lastRenderTotal = totalNow;
     this.lastRenderTime = now;
 
