@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Config } from './config.ts';
-import { CONCURRENCY } from './config.ts';
+import { CONCURRENCY, MAX_CONSECUTIVE_FAILURES } from './config.ts';
 import { apiList, getDlink, type TeraBoxItem } from './api.ts';
 import { Semaphore, ProgressDisplay } from './progress.ts';
 
@@ -99,17 +99,25 @@ export async function downloadAll(
 
   display.start();
 
+  let consecutiveFailures = 0;
+
   await Promise.all(
     files.map(async (file) => {
       await sem.acquire();
+      if (display.aborted) {
+        sem.release();
+        return;
+      }
       const local = localPathFor(localRoot, file);
       const slot = display.allocSlot(file.server_filename, file.size, path.dirname(local));
       try {
         const dlink = await getDlink(headers, file.path);
         const result = await downloadFile(headers, dlink, local, (n) => display.update(slot, n));
         display.finish(slot, result);
-      } catch {
-        display.finish(slot, 'failed');
+        consecutiveFailures = 0;
+      } catch (err) {
+        display.finish(slot, 'failed', (err as Error).message);
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) display.aborted = true;
       } finally {
         sem.release();
       }

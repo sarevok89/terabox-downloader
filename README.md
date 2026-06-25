@@ -34,7 +34,7 @@ Then edit `terabox_config.ts` and fill in your cookie (see below).
 npx tsx terabox-downloader.ts "/My Files/Photos"
 
 # Download into a specific local directory
-npx tsx terabox-downloader.ts "/My Files/Photos" "/home/user/backup"
+npx tsx terabox-downloader.ts "/My Files/Photos" "~/Downloads"
 ```
 
 The remote path is the folder path as it appears in the TeraBox web UI (starting with `/`).

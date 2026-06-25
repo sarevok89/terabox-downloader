@@ -16,9 +16,9 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig, makeHeaders } from './src/config.ts';
+import { loadConfig, makeHeaders, MAX_CONSECUTIVE_FAILURES } from './src/config.ts';
 import { getJsToken } from './src/api.ts';
-import { formatBytes, formatEta } from './src/progress.ts';
+import { formatBytes, formatEta, shortReason } from './src/progress.ts';
 import { collectFiles, downloadAll } from './src/download.ts';
 
 function die(msg: string): never {
@@ -59,13 +59,27 @@ async function main(): Promise<void> {
   const elapsed = (Date.now() - display.startTime) / 1000;
 
   const parts = [
-    `Done in ${formatEta(elapsed)}.`,
+    display.aborted
+      ? `Stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive failures (${formatEta(elapsed)}).`
+      : `Done in ${formatEta(elapsed)}.`,
     `Downloaded: ${display.doneCount}`,
     `Skipped: ${display.skippedCount}`,
     ...(display.failedCount ? [`Failed: ${display.failedCount}`] : []),
     `Total: ${formatBytes(display.downloadedBytes)}`,
   ];
   console.log('\n' + parts.join('  '));
+
+  if (display.failures.length) {
+    const counts = new Map<string, number>();
+    for (const f of display.failures) {
+      const reason = shortReason(f.reason);
+      counts.set(reason, (counts.get(reason) ?? 0) + 1);
+    }
+    console.log('\nFailure reasons:');
+    for (const [reason, count] of counts) {
+      console.log(`  ${count}x  ${reason}`);
+    }
+  }
 }
 
 main().catch((err) => {

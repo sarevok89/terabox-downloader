@@ -28,6 +28,13 @@ function truncate(s: string, max: number): string {
   return s.length > max ? '…' + s.slice(-(max - 1)) : s;
 }
 
+/** Strips per-file detail (path, JSON payload) from an error message so identical failures group together. */
+export function shortReason(message: string): string {
+  const firstLine = message.split('\n')[0];
+  const arrow = firstLine.indexOf('→');
+  return arrow >= 0 ? firstLine.slice(arrow + 1).trim() : firstLine;
+}
+
 // ── Semaphore ─────────────────────────────────────────────────────────────────
 
 /** Promise-based counting semaphore for bounding the number of concurrent downloads. */
@@ -40,13 +47,17 @@ export class Semaphore {
   }
 
   acquire(): Promise<void> {
-    if (this.n > 0) { this.n--; return Promise.resolve(); }
-    return new Promise(r => this.waiters.push(r));
+    if (this.n > 0) {
+      this.n--;
+      return Promise.resolve();
+    }
+    return new Promise((r) => this.waiters.push(r));
   }
 
   release(): void {
     const next = this.waiters.shift();
-    if (next) next(); else this.n++;
+    if (next) next();
+    else this.n++;
   }
 }
 
@@ -73,6 +84,8 @@ export class ProgressDisplay {
   skippedCount = 0;
   failedCount = 0;
   downloadedBytes = 0;
+  aborted = false;
+  readonly failures: Array<{ name: string; reason: string }> = [];
   readonly startTime = Date.now();
   private overallSpeed = 0;
   private lastRenderTotal = 0;
@@ -100,12 +113,17 @@ export class ProgressDisplay {
     if (s) s.downloaded = downloaded;
   }
 
-  finish(slot: number, result: 'done' | 'skipped' | 'failed'): void {
+  finish(slot: number, result: 'done' | 'skipped' | 'failed', reason?: string): void {
     const s = this.slots[slot];
     if (s) {
-      if (result === 'done') { this.doneCount++; this.downloadedBytes += s.size; }
-      else if (result === 'skipped') this.skippedCount++;
-      else this.failedCount++;
+      if (result === 'done') {
+        this.doneCount++;
+        this.downloadedBytes += s.size;
+      } else if (result === 'skipped') this.skippedCount++;
+      else {
+        this.failedCount++;
+        this.failures.push({ name: s.name, reason: reason ?? 'unknown error' });
+      }
     }
     this.slots[slot] = null;
     this.pool.push(slot);
@@ -117,7 +135,10 @@ export class ProgressDisplay {
   }
 
   stop(): void {
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
     this.render();
   }
 
@@ -159,7 +180,10 @@ export class ProgressDisplay {
     ];
 
     for (const s of this.slots) {
-      if (!s) { lines.push(''); continue; }
+      if (!s) {
+        lines.push('');
+        continue;
+      }
       const name = truncate(s.name, 72).padEnd(72);
       const frac = s.size > 0 ? s.downloaded / s.size : 0;
       const bar = makeBar(frac, 18);
@@ -169,6 +193,6 @@ export class ProgressDisplay {
     }
 
     process.stdout.write(`\x1b[${BLOCK_LINES}A`);
-    process.stdout.write(lines.map(l => `\x1b[2K${l}`).join('\n') + '\n');
+    process.stdout.write(lines.map((l) => `\x1b[2K${l}`).join('\n') + '\n');
   }
 }
