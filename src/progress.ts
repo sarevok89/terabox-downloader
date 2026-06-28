@@ -69,6 +69,9 @@ interface SlotState {
   downloaded: number;
   prevDownloaded: number;
   speed: number;
+  /** Bytes already on disk when this slot was allocated (e.g. a resumed `.part` file), credited once on the first update() rather than counted as throughput. */
+  baseline: number;
+  baselined: boolean;
 }
 
 const BLOCK_LINES = CONCURRENCY + 3;
@@ -103,14 +106,25 @@ export class ProgressDisplay {
   /** Claims a free display row for a new in-progress file; caller must call finish() to release it. */
   allocSlot(name: string, size: number, dir: string): number {
     const i = this.pool.shift()!;
-    this.slots[i] = { name, size, downloaded: 0, prevDownloaded: 0, speed: 0 };
+    this.slots[i] = { name, size, downloaded: 0, prevDownloaded: 0, speed: 0, baseline: 0, baselined: false };
     this.currentDir = dir;
     return i;
   }
 
   update(slot: number, downloaded: number): void {
     const s = this.slots[slot];
-    if (s) s.downloaded = downloaded;
+    if (!s) return;
+    if (!s.baselined) {
+      // First report for this file: any bytes already present (a resumed .part)
+      // are credited to the running total immediately instead of letting the
+      // next render tick see them as a burst of throughput.
+      s.baseline = downloaded;
+      s.prevDownloaded = downloaded;
+      this.downloadedBytes += downloaded;
+      this.lastRenderTotal += downloaded;
+      s.baselined = true;
+    }
+    s.downloaded = downloaded;
   }
 
   finish(slot: number, result: 'done' | 'skipped' | 'failed', reason?: string): void {
@@ -118,7 +132,7 @@ export class ProgressDisplay {
     if (s) {
       if (result === 'done') {
         this.doneCount++;
-        this.downloadedBytes += s.size;
+        this.downloadedBytes += s.size - s.baseline;
       } else if (result === 'skipped') this.skippedCount++;
       else {
         this.failedCount++;
@@ -143,7 +157,7 @@ export class ProgressDisplay {
   }
 
   private get activeBytes(): number {
-    return this.slots.reduce((sum, s) => sum + (s?.downloaded ?? 0), 0);
+    return this.slots.reduce((sum, s) => sum + (s ? s.downloaded - s.baseline : 0), 0);
   }
 
   private render(): void {
